@@ -62,13 +62,12 @@ jobs:
 
           cat copilot-response.json
 
-      # -------------------------------------------------------
-      # Extract markdown content from response
-      # -------------------------------------------------------
-      - name: Extract markdown report
+      - name: Debug full response
         run: |
-          jq -r '.choices[0].message.content' copilot-response.json > copilot-report.md
-          cat copilot-report.md
+          echo "==== FULL RESPONSE ===="
+          cat copilot-response.json
+          echo "======================="
+
 
       # -------------------------------------------------------
       # Upload artifact
