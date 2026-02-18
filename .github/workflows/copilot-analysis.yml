@@ -6,43 +6,75 @@ on:
 jobs:
   analyze:
     runs-on: ubuntu-latest
+
     permissions:
       contents: read
       id-token: write
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - name: Read Java Files
+      # -------------------------------------------------------
+      # Read all Java files
+      # -------------------------------------------------------
+      - name: Read Java source files
         run: |
           echo "JAVA_CODE<<EOF" >> $GITHUB_ENV
           find java-project/src -name "*.java" -exec cat {} \; >> $GITHUB_ENV
           echo "EOF" >> $GITHUB_ENV
 
-      - name: Read Prompt
+      # -------------------------------------------------------
+      # Read prompt file
+      # -------------------------------------------------------
+      - name: Read prompt file
         run: |
           echo "PROMPT_TEXT<<EOF" >> $GITHUB_ENV
           cat prompt/prompt.txt >> $GITHUB_ENV
           echo "EOF" >> $GITHUB_ENV
 
-      - name: Call GitHub Copilot Model
+      # -------------------------------------------------------
+      # Create safe JSON request body
+      # -------------------------------------------------------
+      - name: Create request body
         run: |
-          RESPONSE=$(curl -s https://models.inference.ai.azure.com/chat/completions \
+          jq -n \
+            --arg prompt "$PROMPT_TEXT" \
+            --arg code "$JAVA_CODE" \
+            '{
+              model: "gpt-4o-mini",
+              messages: [
+                { role: "system", content: "You are a senior Java code reviewer." },
+                { role: "user", content: ($prompt + "\n\nJava Code:\n" + $code) }
+              ]
+            }' > request.json
+
+      # -------------------------------------------------------
+      # Call GitHub Copilot Inference API
+      # -------------------------------------------------------
+      - name: Call Copilot model
+        run: |
+          curl -s https://models.inference.ai.azure.com/chat/completions \
             -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
             -H "Content-Type: application/json" \
-            -d "{
-              \"model\": \"gpt-4o-mini\",
-              \"messages\": [
-                {\"role\": \"system\", \"content\": \"You are a senior Java code reviewer.\"},
-                {\"role\": \"user\", \"content\": \"${PROMPT_TEXT}\n\nJava Code:\n${JAVA_CODE}\"}
-              ]
-            }")
+            -d @request.json \
+            > copilot-response.json
 
-          echo "$RESPONSE" > copilot-report.json
-          cat copilot-report.json
+          cat copilot-response.json
 
-      - name: Upload Report
+      # -------------------------------------------------------
+      # Extract markdown content from response
+      # -------------------------------------------------------
+      - name: Extract markdown report
+        run: |
+          jq -r '.choices[0].message.content' copilot-response.json > copilot-report.md
+          cat copilot-report.md
+
+      # -------------------------------------------------------
+      # Upload artifact
+      # -------------------------------------------------------
+      - name: Upload report artifact
         uses: actions/upload-artifact@v4
         with:
           name: copilot-analysis-report
-          path: copilot-report.json
+          path: copilot-report.md
