@@ -1,0 +1,10 @@
+Analyze the following Java code and generate:
+
+1. Security issues
+2. Code quality issues
+3. Performance improvements
+4. Refactoring suggestions
+5. Risk level (Low/Medium/High)
+6. Suggested improved version of the code
+
+Provide output in markdown format.
