@@ -1,0 +1,52 @@
+name: Copilot Java Analysis
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+jobs:
+  copilot-analysis:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Read Java code
+        run: |
+          echo "JAVA_CODE<<EOF" >> $GITHUB_ENV
+          cat java-project/src/main/java/com/example/demo/*.java >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+
+      - name: Read prompt
+        run: |
+          echo "PROMPT_TEXT<<EOF" >> $GITHUB_ENV
+          cat prompt/prompt.txt >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+
+      - name: Call Copilot Inference API
+        run: |
+          RESPONSE=$(curl -s -X POST \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            https://api.githubcopilot.com/chat/completions \
+            -d "{
+              \"model\": \"gpt-4o-mini\",
+              \"messages\": [
+                {\"role\": \"system\", \"content\": \"You are a senior Java code reviewer.\"},
+                {\"role\": \"user\", \"content\": \"${PROMPT_TEXT}\n\nHere is the Java code:\n\n${JAVA_CODE}\"}
+              ]
+            }")
+
+          echo "$RESPONSE" > copilot-report.json
+          echo "$RESPONSE"
+
+      - name: Upload Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: copilot-analysis-report
+          path: copilot-report.json
