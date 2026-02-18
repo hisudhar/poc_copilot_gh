@@ -12,42 +12,40 @@ jobs:
       id-token: write
       models: read
 
-
     steps:
+      # -------------------------------------------------------
+      # Checkout repository
+      # -------------------------------------------------------
       - name: Checkout repository
         uses: actions/checkout@v4
 
       # -------------------------------------------------------
-      # Read all Java files
+      # Collect Java source files safely
       # -------------------------------------------------------
       - name: Read Java source files
         run: |
-          echo "JAVA_CODE<<EOF" >> $GITHUB_ENV
-          find java-project/src -name "*.java" -exec cat {} \; >> $GITHUB_ENV
-          echo "EOF" >> $GITHUB_ENV
+          find java-project/src -name "*.java" -exec cat {} \; > java_code.txt
 
       # -------------------------------------------------------
-      # Read prompt file
+      # Read prompt file safely
       # -------------------------------------------------------
       - name: Read prompt file
         run: |
-          echo "PROMPT_TEXT<<EOF" >> $GITHUB_ENV
-          cat prompt/prompt.txt >> $GITHUB_ENV
-          echo "EOF" >> $GITHUB_ENV
+          cat prompt/prompt.txt > prompt_text.txt
 
       # -------------------------------------------------------
-      # Create safe JSON request body
+      # Build JSON request body using jq --rawfile
       # -------------------------------------------------------
       - name: Create request body
         run: |
           jq -n \
-            --arg prompt "$PROMPT_TEXT" \
-            --arg code "$JAVA_CODE" \
+            --rawfile prompt prompt_text.txt \
+            --rawfile code java_code.txt \
             '{
               model: "gpt-4o-mini",
               messages: [
-                { role: "system", content: "You are a senior Java code reviewer." },
-                { role: "user", content: ($prompt + "\n\nJava Code:\n" + $code) }
+                { "role": "system", "content": "You are a senior Java code reviewer." },
+                { "role": "user", "content": ($prompt + "\n\nJava Code:\n" + $code) }
               ]
             }' > request.json
 
@@ -62,17 +60,23 @@ jobs:
             -d @request.json \
             > copilot-response.json
 
+          echo "Raw API response:"
           cat copilot-response.json
-
-      - name: Debug full response
-        run: |
-          echo "==== FULL RESPONSE ===="
-          cat copilot-response.json
-          echo "======================="
-
 
       # -------------------------------------------------------
-      # Upload artifact
+      # Validate response and extract model output
+      # -------------------------------------------------------
+      - name: Extract model output
+        run: |
+          if jq -e '.choices[0].message.content' copilot-response.json > /dev/null; then
+            jq -r '.choices[0].message.content' copilot-response.json > copilot-report.md
+          else
+            echo "Model returned an error:" > copilot-report.md
+            cat copilot-response.json >> copilot-report.md
+          fi
+
+      # -------------------------------------------------------
+      # Upload final report
       # -------------------------------------------------------
       - name: Upload report artifact
         uses: actions/upload-artifact@v4
